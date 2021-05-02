@@ -14,7 +14,7 @@ typedef struct {
     uint32_t maj;
     uint32_t min;
     uint64_t blocks;
-    uint64_t size_mb
+    uint64_t size_mb;
 } part;
 
 uint64_t get_parts(part *buffer, uint64_t max_length);

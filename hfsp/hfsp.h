@@ -6,13 +6,6 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-typedef enum {
-    LeafNode = -1,
-    IndexNode = 0,
-    HeaderNode = 1,
-    MapNode = 2
-} hfsp_kind;
-
 enum {
     kHFSPlusFolderRecord = 1,
     kHFSPlusFileRecord = 2,
@@ -21,37 +14,55 @@ enum {
 };
 
 typedef struct {
-    uint32_t fLink;
-    uint32_t bLink;
-    int8_t kind;
-    uint8_t height;
-    uint16_t numRecords;
-    uint16_t reserved;
-} hfsp_node_descriptor;
+    uint32_t startBlock;
+    uint32_t blockCount;
+} hfsp_extent_descriptor;
 
 typedef struct {
-    hfsp_node_descriptor *descriptor;
-    void **records;
-    uint16_t *record_pointers;
-} hfsp_node;
+    uint64_t logicalSize;
+    uint32_t clumpSize;
+    uint32_t totalBlocks;
+    hfsp_extent_descriptor extents[8];
+} hfsp_fork_data;
+
+typedef struct {
+    //40 before blockSize
+    uint32_t blockSize;
+    //36 after blockSize
+    //8*4 for finderInfo
+    //mesto dly 5 specialnih failov & get catalogFile
+    //80 for allocationFile
+    //80 for extentsFile
+    hfsp_fork_data *catalogFile;
+    //80 for allocationFile
+    //80 for extentsFile
+} hfsp_volume_header;
+
+typedef struct {
+    uint32_t fLink;
+    uint32_t bLink;
+    //2 for kind&height
+    uint16_t numRecords;
+    //2 for reserved
+} hfsp_node_descriptor;
 
 typedef struct  {
-    uint16_t    treeDepth;
-    uint32_t    rootNode;
-    uint32_t    leafRecords;
+    //10
     uint32_t    firstLeafNode;
     uint32_t    lastLeafNode;
     uint16_t    nodeSize;
     uint16_t    maxKeyLength;
     uint32_t    totalNodes;
     uint32_t    freeNodes;
-    uint16_t    reserved1;
-    uint32_t    clumpSize;
-    uint8_t     btreeType;
-    uint8_t     keyCompareType;
-    uint32_t    attributes;
-    uint32_t    reserved3[16];
+    //12
+    //4*16
 } hfsp_header_record;
+
+typedef struct {
+    hfsp_node_descriptor *descriptor;
+    void **records;
+    uint16_t *record_pointers;
+} hfsp_node;
 
 typedef struct {
     hfsp_node *header_node;
@@ -70,98 +81,18 @@ typedef struct {
     char *node_name;
 } hfsp_catalog_key;
 
-
-
-typedef enum {
-    NO_SUCH_FILE_OR_DIR,
-    IS_FILE,
-    ALREADY_ON_TOP,
-    NO_RESERVED_SPACE,
-    BAD_ROOT_STRUCTURE
-} ERROR;
-
-ERROR ERRNO;
-
 typedef struct {
-    uint32_t startBlock;
-    uint32_t blockCount;
-} hfsp_extent_descriptor;
-
-typedef struct {
-    uint64_t logicalSize;
-    uint32_t clumpSize;
-    uint32_t totalBlocks;
-    hfsp_extent_descriptor extents[8];
-} hfsp_fork_data;
-
-typedef uint32_t HFSCatalogNodeID;
-
-typedef struct {
-    uint16_t keyLength;
-    uint8_t forkType;
-    uint8_t pad;
-    HFSCatalogNodeID fileID;
-    uint32_t startBlock;
-} hfsp_extent_key ;
-
-typedef struct {
-    uint16_t signature;
-    uint16_t version;
-    uint32_t attributes;
-    uint32_t lastMountedVersion;
-    uint32_t journalInfoBlock;
-    uint32_t createDate;
-    uint32_t modifyDate;
-    uint32_t backupDate;
-    uint32_t checkedDate;
-    uint32_t fileCount;
-    uint32_t folderCount;
-    uint32_t blockSize;
-    uint32_t totalBlocks;
-    uint32_t freeBlocks;
-    uint32_t nextAllocation;
-    uint32_t rsrcClumpSize;
-    uint32_t dataClumpSize;
-    uint32_t nextCatalogID;
-    uint32_t writeCount;
-    uint64_t encodingsBitmap;
-    uint32_t finderInfo[8];
-//5 specialnih failov
-    hfsp_fork_data *allocationFile;
-    hfsp_fork_data *extentsFile;
-    hfsp_fork_data *catalogFile;
-    hfsp_fork_data *attributesFile;
-    hfsp_fork_data *startupFile;
-} hfsp_volume_header;
-
-typedef struct {
-    int16_t recordType;
-    uint16_t flags;
-    uint32_t valence;
+    //8 before fID
     uint32_t folderID;
-    uint32_t createDate;
-    uint32_t contentModDate;
-    uint32_t attributeModDate;
-    uint32_t accessDate;
-    uint32_t backupDate;
-    uint32_t textEncoding;
-    uint32_t reserved2;
+    //last 76
 } hfsp_catalog_folder;
 
 typedef struct {
-    int16_t recordType;
-    uint16_t flags;
-    uint32_t reserved1;
-    uint32_t fileID;
-    uint32_t createDate;
-    uint32_t contentModDate;
-    uint32_t attributeModDate;
-    uint32_t accessDate;
-    uint32_t backupDate;
-    uint32_t textEncoding;
-    uint32_t reserved2;
+    //32
+    //48
+    //8
     hfsp_fork_data dataFork;
-    hfsp_fork_data resourceFork;
+    //40
 } hfsp_catalog_file;
 
 typedef struct {
@@ -169,12 +100,34 @@ typedef struct {
     uint32_t pathFolderIds[500];
     uint32_t path_folder_depth;
     uint32_t current_folder_id;
+    
     hfsp_catalog_folder *current_folder_info;
     hfsp_volume_header *vol_header;
     hfsp_btree *catalog_file;
 } hfsplus;
 
-//functions
+typedef enum {
+    ERR_CANT_FIND, //emp
+    ERR_FIND_FILE, //file_record
+    ERR_ON_ROOT, //on_root
+    ERR_RESERVE, //is_not_nullTERM
+    ERR_WRONG_STRUCTURE //bad_structure
+} ERRORS;
 
+ERRORS ERR;
+
+//FUNCTIONS
+
+hfsplus *read_hfsplus(char *filename);
+
+char *pwd(hfsplus *fs);
+
+uint32_t ls(hfsplus *fs, char **buffer, int *setType);
+
+char *cd(hfsplus *fs, char *destination);
+
+char *back(hfsplus *fs);
+
+int32_t copy(char *name, char *destination, hfsplus *fs);
 
 #endif //SOFTWARE1LIB_HFSP_H
